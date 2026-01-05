@@ -5,7 +5,7 @@ import streamlit as st
 # 1. Setup Data (Storytelling Prep)
 def load_and_prep_data():
     # Load data from csv
-    df = pd.read_csv('data/mp_olympics_medals.csv')
+    df = pd.read_csv('mp_olympics_medals.csv')
     
     # Ensure date is a datetime object to sort chronologically
     df['Date'] = pd.to_datetime(df['Date'])

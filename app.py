@@ -4,19 +4,18 @@ import streamlit as st
 
 # 1. Setup Data (Storytelling Prep)
 def load_and_prep_data():
-    # Load data from csv
-    df = pd.read_csv('mp_olympics_medals.csv')
-    
-    # Ensure date is a datetime object to sort chronologically
-    df['Date'] = pd.to_datetime(df['Date'])
+    df = pd.read_csv("mp_olympics_medals.csv")
+
+    # Remove non-date characters (like *)
+    df['Date'] = df['Date'].astype(str).str.replace(r"[^A-Za-z0-9, ]", "", regex=True)
+
+    # Convert to datetime safely
+    df['Date'] = pd.to_datetime(df['Date'], format="mixed", errors="raise")
+
     df = df.sort_values('Date')
-    
-    # Extract Year
     df['Year'] = df['Date'].dt.year
-    
-    # Create a cumulative count of medals over time
     df['Medal_Count'] = range(1, len(df) + 1)
-    
+
     return df
 
 # 2. Create the Storytelling Visual

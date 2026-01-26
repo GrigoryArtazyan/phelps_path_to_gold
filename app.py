@@ -82,79 +82,130 @@ def load_and_prep_data():
 
 
 def create_cumulative_stacked_chart(df):
-    """Create an animated stacked bar chart showing medal accumulation by Olympics."""
+    """Create a simple stacked bar chart showing medals per Olympics."""
     
     # Group medals by year and medal type
-    medal_counts = df.groupby(['Year', 'Medal']).size().unstack(fill_value=0)
-    medal_counts = medal_counts.reindex(columns=['Gold', 'Silver', 'Bronze'], fill_value=0)
+    medal_counts = df.groupby(['Year', 'Medal']).size().reset_index(name='Count')
     
-    # Create cumulative totals
-    years = sorted(df['Year'].unique())
+    # Add 2000 Olympics with 0 medals (Phelps competed but didn't medal)
+    row_2000 = pd.DataFrame({'Year': [2000], 'Medal': ['None'], 'Count': [0]})
+    medal_counts = pd.concat([row_2000, medal_counts], ignore_index=True)
     
-    frames = []
-    for i, year in enumerate(years):
-        cumulative = medal_counts.loc[:year].sum()
-        frames.append({
-            'Year': year,
-            'Gold': cumulative.get('Gold', 0),
-            'Silver': cumulative.get('Silver', 0),
-            'Bronze': cumulative.get('Bronze', 0)
-        })
+    # Create stacked bar chart
+    fig = px.bar(
+        medal_counts,
+        x='Year',
+        y='Count',
+        color='Medal',
+        color_discrete_map={'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Bronze': '#CD7F32', 'None': '#4a5568'},
+        category_orders={'Medal': ['None', 'Bronze', 'Silver', 'Gold']},
+        text='Count'
+    )
     
-    frame_df = pd.DataFrame(frames)
+    fig.update_traces(textposition='inside', textfont=dict(size=14, color='#1a1a1a'))
     
-    # Create the animated figure
+    # Add annotation for 2000
+    fig.add_annotation(
+        x=2000, y=0.5,
+        text="5th place",
+        showarrow=False,
+        font=dict(size=12, color='#8899a6'),
+        yshift=15
+    )
+    
+    fig.update_layout(
+        xaxis=dict(
+            title=dict(text='Olympic Year', font=dict(size=16, color='#e8e8e8')),
+            tickfont=dict(size=14, color='#c9d6df'),
+            tickmode='array',
+            tickvals=[2000, 2004, 2008, 2012, 2016]
+        ),
+        yaxis=dict(
+            title=dict(text='Medal Count', font=dict(size=16, color='#e8e8e8')),
+            tickfont=dict(size=14, color='#c9d6df'),
+            gridcolor='rgba(255,255,255,0.1)'
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5,
+            font=dict(color='#e8e8e8', size=14),
+            title=None
+        ),
+        height=450,
+        bargap=0.3
+    )
+    
+    return fig
+
+
+def time_to_seconds(time_str):
+    """Convert time string (e.g., '1:52.03' or '50.58') to seconds."""
+    time_str = str(time_str).strip()
+    if ':' in time_str:
+        parts = time_str.split(':')
+        minutes = int(parts[0])
+        seconds = float(parts[1])
+        return minutes * 60 + seconds
+    else:
+        return float(time_str)
+
+
+def create_butterfly_time_chart():
+    """Create a line chart showing time improvement in butterfly events."""
+    
+    # Load full data (including 2000 non-medal performance)
+    df = pd.read_csv("mp_olympics_medals_data.csv")
+    
+    # Filter for butterfly events
+    butterfly_df = df[df['Event'].isin(['Men 100 Butterfly', 'Men 200 Butterfly'])].copy()
+    
+    # Convert time to seconds
+    butterfly_df['Time_Seconds'] = butterfly_df['Time'].apply(time_to_seconds)
+    
     fig = go.Figure()
     
-    colors = {'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Bronze': '#CD7F32'}
+    colors = {'Men 200 Butterfly': '#ffd700', 'Men 100 Butterfly': '#00b4d8'}
+    symbols = {'Men 200 Butterfly': 'circle', 'Men 100 Butterfly': 'diamond'}
     
-    # Add traces for each medal type
-    for medal in ['Bronze', 'Silver', 'Gold']:
-        fig.add_trace(go.Bar(
-            name=medal,
-            x=[str(years[0])],
-            y=[frame_df.iloc[0][medal]],
-            marker_color=colors[medal],
-            text=[int(frame_df.iloc[0][medal])],
-            textposition='inside',
-            textfont=dict(size=14, color='#1a1a1a', family='Source Sans Pro')
+    for event in ['Men 200 Butterfly', 'Men 100 Butterfly']:
+        event_data = butterfly_df[butterfly_df['Event'] == event].sort_values('Year')
+        
+        # Format label
+        label = '200m Butterfly' if '200' in event else '100m Butterfly'
+        
+        fig.add_trace(go.Scatter(
+            x=event_data['Year'],
+            y=event_data['Time_Seconds'],
+            mode='lines+markers+text',
+            name=label,
+            line=dict(color=colors[event], width=3),
+            marker=dict(size=12, symbol=symbols[event], line=dict(width=2, color='white')),
+            text=event_data['Time'],
+            textposition='top center',
+            textfont=dict(size=11, color='#e8e8e8'),
+            hovertemplate='<b>%{text}</b><br>Year: %{x}<extra></extra>'
         ))
     
-    # Create animation frames
-    animation_frames = []
-    for i, row in frame_df.iterrows():
-        x_vals = [str(y) for y in years[:i+1]]
-        
-        frame_data = []
-        for medal in ['Bronze', 'Silver', 'Gold']:
-            y_vals = list(frame_df.iloc[:i+1][medal])
-            frame_data.append(go.Bar(
-                x=x_vals,
-                y=y_vals,
-                text=[int(v) if v > 0 else '' for v in y_vals],
-                textposition='inside'
-            ))
-        
-        animation_frames.append(go.Frame(data=frame_data, name=str(row['Year'])))
-    
-    fig.frames = animation_frames
-    
-    # Layout with play button
     fig.update_layout(
-        barmode='stack',
         title=dict(
-            text='Medal Count Growing Through Each Olympics',
+            text='Butterfly Event Times Across Olympics',
             font=dict(size=22, color='#e8e8e8', family='Source Sans Pro'),
             x=0.5
         ),
         xaxis=dict(
             title=dict(text='Olympic Year', font=dict(size=16, color='#e8e8e8')),
             tickfont=dict(size=14, color='#c9d6df'),
+            tickmode='array',
+            tickvals=[2000, 2004, 2008, 2012, 2016],
             gridcolor='rgba(255,255,255,0.1)'
         ),
         yaxis=dict(
-            title=dict(text='Cumulative Medal Count', font=dict(size=16, color='#e8e8e8')),
-            range=[0, 30],
+            title=dict(text='Time (seconds)', font=dict(size=16, color='#e8e8e8')),
             tickfont=dict(size=14, color='#c9d6df'),
             gridcolor='rgba(255,255,255,0.1)'
         ),
@@ -168,78 +219,7 @@ def create_cumulative_stacked_chart(df):
             x=0.5,
             font=dict(color='#e8e8e8', size=14)
         ),
-        updatemenus=[dict(
-            type='buttons',
-            showactive=False,
-            y=1.15,
-            x=0.5,
-            xanchor='center',
-            buttons=[
-                dict(
-                    label='▶ Play Journey',
-                    method='animate',
-                    args=[None, {
-                        'frame': {'duration': 1500, 'redraw': True},
-                        'fromcurrent': True,
-                        'transition': {'duration': 800, 'easing': 'cubic-in-out'}
-                    }]
-                ),
-                dict(
-                    label='⏸ Pause',
-                    method='animate',
-                    args=[[None], {
-                        'frame': {'duration': 0, 'redraw': False},
-                        'mode': 'immediate',
-                        'transition': {'duration': 0}
-                    }]
-                )
-            ]
-        )],
-        height=500
-    )
-    
-    return fig
-
-
-def create_event_type_histogram(df):
-    """Create a histogram showing individual vs team medals."""
-    
-    type_counts = df['Event_Type'].value_counts()
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Bar(
-        x=type_counts.index,
-        y=type_counts.values,
-        marker=dict(
-            color=['#00b4d8', '#ffd700'],
-            line=dict(color='rgba(255,255,255,0.3)', width=2)
-        ),
-        text=type_counts.values,
-        textposition='outside',
-        textfont=dict(size=18, color='#e8e8e8', family='Source Sans Pro')
-    ))
-    
-    fig.update_layout(
-        title=dict(
-            text='Individual vs Team Relay Medals',
-            font=dict(size=22, color='#e8e8e8', family='Source Sans Pro'),
-            x=0.5
-        ),
-        xaxis=dict(
-            title=dict(text='Event Type', font=dict(size=16, color='#e8e8e8')),
-            tickfont=dict(size=14, color='#c9d6df')
-        ),
-        yaxis=dict(
-            title=dict(text='Number of Medals', font=dict(size=16, color='#e8e8e8')),
-            range=[0, max(type_counts.values) + 3],
-            tickfont=dict(size=14, color='#c9d6df'),
-            gridcolor='rgba(255,255,255,0.1)'
-        ),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        height=400,
-        showlegend=False
+        height=450
     )
     
     return fig
@@ -284,19 +264,19 @@ def main():
         
         # ============ STACKED MEDAL CHART ============
         st.markdown("### The Medal Journey")
-        st.markdown("*Press Play to watch the medals stack up through each Olympic Games*")
+        st.markdown("*Medals won at each Olympic Games*")
         
         stacked_chart = create_cumulative_stacked_chart(data)
         st.plotly_chart(stacked_chart, use_container_width=True)
         
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
-        # ============ INDIVIDUAL VS TEAM HISTOGRAM ============
-        st.markdown("### Solo Glory vs Team Triumph")
-        st.markdown("*How many medals came from individual events versus relay teams?*")
+        # ============ BUTTERFLY TIME IMPROVEMENT ============
+        st.markdown("### Chasing Faster Times")
+        st.markdown("*Watch how Phelps' butterfly times evolved — lower is faster!*")
         
-        histogram = create_event_type_histogram(data)
-        st.plotly_chart(histogram, use_container_width=True)
+        butterfly_chart = create_butterfly_time_chart()
+        st.plotly_chart(butterfly_chart, use_container_width=True)
         
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
